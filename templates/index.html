@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy-Preserving Data Sharing Platform</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>Privacy-Preserving Data Sharing Platform</h1>
+    
+    <h2>Upload Data for Encryption</h2>
+    <form id="encrypt-form">
+        <div id="text-input">
+            <label for="data">Text Data:</label>
+            <textarea id="data" name="data"></textarea><br>
+        </div>
+        <div id="file-input">
+            <label for="file">Excel File:</label>
+            <input type="file" id="file" name="file" accept=".xlsx,.xls"><br>
+        </div>
+        <label for="data-type">Data Type:</label>
+        <select id="data-type" name="data_type">
+            <option value="text">Text</option>
+            <option value="file">Excel File</option>
+        </select><br>
+        <label for="password">Password:</label>
+        <input type="password" id="password" name="password" required minlength="6"><br>
+        <label for="method">Encryption Method:</label>
+        <select id="method" name="method">
+            <option value="aes">AES</option>
+            <option value="homomorphic">Homomorphic Encryption</option>
+        </select><br>
+        <label for="use-noise">Use Differential Privacy Noise:</label>
+        <input type="checkbox" id="use-noise" name="use_noise"><br>
+        <button type="submit">Encrypt</button>
+    </form>
+
+    <div id="encryption-result" style="display:none;">
+        <h3>Encrypted Data:</h3>
+        <p id="encrypted-id">ID: </p>
+        <p id="encrypted-data">Encrypted Data: </p>
+    </div>
+    
+    <h2>Generate Token</h2>
+    <form id="token-form">
+        <label for="id">Unique ID:</label>
+        <input type="text" id="id" name="id" required><br>
+        <button type="submit">Generate Token</button>
+    </form>
+
+    <div id="token-result" style="display:none;">
+        <h3>Generated Token:</h3>
+        <p id="generated-token">Token: </p>
+    </div>
+
+    <div id="decrypt-section">
+        <h2>Decrypt Data</h2>
+        <form id="decrypt-form">
+            <label for="token">Token:</label>
+            <input type="text" id="token" name="token" required><br>
+            <label for="decrypt-password">Password:</label>
+            <input type="password" id="decrypt-password" name="password" required minlength="6"><br>
+            <button type="submit">Decrypt</button>
+        </form>
+        
+        <div id="decryption-result" style="display:none;">
+            <h3>Decryption Result:</h3>
+            <p id="decrypted-data"></p>
+            <div id="download-section" style="display:none;">
+                <button id="download-button">Download Decrypted File</button>
+            </div>
+            <div id="noise-comparison" style="display:none;">
+                <h4>Noise Comparison:</h4>
+                <p><strong>Decrypted Data:</strong> <span id="noisy-decrypted"></span></p>
+                <p><strong>Original Data:</strong> <span id="original-data"></span></p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        // Handle data type selection
+        $('#data-type').change(function() {
+            if ($(this).val() === 'text') {
+                $('#text-input').show();
+                $('#file-input').hide();
+            } else {
+                $('#text-input').hide();
+                $('#file-input').show();
+            }
+        });
+
+        // Encryption form handling
+        $('#encrypt-form').submit(function(e) {
+            e.preventDefault();
+            const password = $('#password').val();
+            const method = $('#method').val();
+            const use_noise = $('#use-noise').is(':checked');
+            const dataType = $('#data-type').val();
+            
+            if (password.length < 6) {
+                alert("Password must be at least 6 characters long.");
+                return;
+            }
+
+            let formData = new FormData();
+            formData.append('password', password);
+            formData.append('method', method);
+            formData.append('use_noise', use_noise);
+            formData.append('data_type', dataType);
+
+            if (dataType === 'text') {
+                formData.append('data', $('#data').val());
+            } else {
+                const file = $('#file')[0].files[0];
+                if (!file) {
+                    alert('Please select a file');
+                    return;
+                }
+                formData.append('file', file);
+            }
+
+            $.ajax({
+                url: '/encrypt',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(response) {
+                    $('#encrypted-id').text("ID: " + response.id || "Encrypted with Homomorphic encryption");
+                    $('#encrypted-data').text("Encrypted Data: " + (response.is_file ? "File encrypted successfully" : response.encrypted_data));
+                    $('#encryption-result').show();
+                    $('#id').val(response.id);
+                    $('#decrypt-section').show();
+                },
+                error: function(error) {
+                    alert('Error encrypting data: ' + error.responseJSON.error);
+                }
+            });
+        });
+
+        // Token generation form handling
+        $('#token-form').submit(function(e) {
+            e.preventDefault();
+            const id = $('#id').val();
+
+            $.ajax({
+                url: '/generate-token',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ id }),
+                success: function(response) {
+                    $('#generated-token').text("Token: " + response.token);
+                    $('#token-result').show();
+                    $('#token').val(response.token);
+                },
+                error: function(error) {
+                    alert('Error generating token: ' + error.responseJSON.error);
+                }
+            });
+        });
+
+        // Decryption form handling
+        $('#decrypt-form').submit(function(e) {
+            e.preventDefault();
+            const token = $('#token').val();
+            const password = $('#decrypt-password').val();
+
+            if (password.length < 6) {
+                alert("Password must be at least 6 characters long.");
+                return;
+            }
+
+            $.ajax({
+                url: '/decrypt',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ token, password }),
+                success: function(response) {
+                    $('#decryption-result').show();
+                    
+                    if (response.is_file) {
+                        $('#decrypted-data').text("File decrypted successfully");
+                        $('#download-section').show();
+                        // Store the decrypted file ID for download
+                        $('#download-button').data('fileId', response.file_id);
+                    } else {
+                        $('#decrypted-data').text(response.data);
+                        $('#download-section').hide();
+                    }
+
+                    if (response.noise_applied) {
+                        $('#noisy-decrypted').text(response.data);
+                        $('#original-data').text(response.original_data);
+                        $('#noise-comparison').show();
+                    } else {
+                        $('#noise-comparison').hide();
+                    }
+                },
+                error: function(error) {
+                    alert('Error decrypting data: ' + error.responseJSON.error);
+                }
+            });
+        });
+
+        // Handle file download
+        $('#download-button').click(function() {
+            const fileId = $(this).data('fileId');
+            window.location.href = `/download/${fileId}`;
+        });
+
+        // Initialize with text input shown
+        $('#file-input').hide();
+    </script>
+</body>
+</html>
